@@ -1,0 +1,36 @@
+{
+  "name": "rella-cli",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "private": "false",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "dev": "ts-node src/cli/index.ts",
+    "lint": "eslint . --ext .ts"
+  },
+  "bin": {
+    "rella": "dist/cli/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "@types/minimatch": "^5.1.2",
+    "commander": "^14.0.2",
+    "execa": "^9.6.0",
+    "inquirer": "^12.11.1",
+    "minimatch": "^10.1.1",
+    "toml": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/iarna__toml": "^2.0.5",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
