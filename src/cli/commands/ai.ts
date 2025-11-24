@@ -11,7 +11,7 @@ async function readStdin(): Promise<string> {
       return;
     }
     process.stdin.setEncoding("utf8");
-    process.stdin.on("data", chunk => {
+    process.stdin.on("data", (chunk) => {
       data += chunk;
     });
     process.stdin.on("end", () => resolve(data));
@@ -23,8 +23,12 @@ export function registerAiCommand(program: Command) {
   program
     .command("ai")
     .description("Run AI task pipeline")
-    .argument("<task>", "Task name (analyze_logs | generate_commit_message | refactor_code | explain_code | generate_snippet)")
+    .argument(
+      "<task>",
+      "Task name (analyze_logs | generate_commit_message | refactor_code | explain_code | generate_snippet)",
+    )
     .option("-f, --file <path>", "Input file instead of stdin")
+    .option("--no-stream", "Disable streaming")
     .allowExcessArguments(true)
     .action(async (task: string, options: { file?: string }, cmd: Command) => {
       const extraArgs = cmd.args.slice(1); // first arg is task
@@ -43,11 +47,18 @@ export function registerAiCommand(program: Command) {
         process.exit(1);
       }
 
-      const result = await runTask(t, {
-        input,
-        extraArgs,
-        defaultContext: "" // overridden by config
-      });
+      const result = await runTask(
+        t,
+        {
+          input,
+          extraArgs,
+          defaultContext: "",
+        },
+        {
+          stream: true,
+          onToken: (t) => process.stdout.write(t),
+        },
+      );
 
       process.stdout.write(result + "\n");
     });

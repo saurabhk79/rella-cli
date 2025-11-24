@@ -1,5 +1,6 @@
 import type { RellaConfig } from "../../config/ConfigTypes.js";
 import { logger } from "../../utils/logger.js";
+import { streamSSE } from "./stream.js";
 
 export interface AIMessage {
   role: "system" | "user" | "assistant";
@@ -8,13 +9,18 @@ export interface AIMessage {
 
 export interface AIProvider {
   name: string;
-  complete(messages: AIMessage[]): Promise<string>;
+
+  // make streaming optional
+  complete(
+    messages: AIMessage[],
+    opts?: { stream?: boolean; onToken?: (t: string) => void }
+  ): Promise<string>;
 }
 
 export class NotConfiguredProvider implements AIProvider {
   name = "none";
   async complete(): Promise<string> {
-    throw new Error("No AI provider configured or API key missing.");
+    throw new Error("AI provider not configured or API key missing.");
   }
 }
 
@@ -24,16 +30,13 @@ export class NotConfiguredProvider implements AIProvider {
 ────────────────────────────────────────────────────────────────── */
 export class OpenRouterProvider implements AIProvider {
   name = "openrouter";
-  private apiKey: string;
-  private model: string;
+  constructor(private apiKey: string, private model: string) {}
 
-  constructor(apiKey: string, model: string) {
-    this.apiKey = apiKey;
-    this.model = model;
-  }
-
-  async complete(messages: AIMessage[]): Promise<string> {
-    logger.debug("[OpenRouter] request", { model: this.model, messages });
+  async complete(
+    messages: AIMessage[],
+    opts?: { stream?: boolean; onToken?: (t: string) => void }
+  ): Promise<string> {
+    const stream = opts?.stream === true;
 
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -46,22 +49,30 @@ export class OpenRouterProvider implements AIProvider {
       body: JSON.stringify({
         model: this.model,
         messages,
+        stream
       })
     });
 
-    if (!res.ok) {
-      const error = await res.text();
-      throw new Error(`OpenRouter error ${res.status}: ${error}`);
+    if (!res.ok) throw new Error(await res.text());
+
+    if (!stream) {
+      const data = await res.json();
+      return (
+        data?.choices?.[0]?.message?.content ??
+        data?.choices?.[0]?.text ??
+        ""
+      );
     }
 
-    const data = await res.json();
-
-    const output =
-      data?.choices?.[0]?.message?.content ??
-      data?.choices?.[0]?.text ??
-      "";
-
-    logger.debug("[OpenRouter] response", { output });
+    let output = "";
+    await streamSSE(
+      res,
+      token => {
+        output += token;
+        opts?.onToken?.(token);
+      },
+      () => {}
+    );
 
     return output;
   }
@@ -73,44 +84,44 @@ export class OpenRouterProvider implements AIProvider {
 ────────────────────────────────────────────────────────────────── */
 export class GeminiProvider implements AIProvider {
   name = "gemini";
-  private apiKey: string;
-  private model: string;
+  constructor(private apiKey: string, private model: string) {}
 
-  constructor(apiKey: string, model: string) {
-    this.apiKey = apiKey;
-    this.model = model;
-  }
+  async complete(
+    messages: AIMessage[],
+    opts?: { stream?: boolean; onToken?: (t: string) => void }
+  ): Promise<string> {
+    const stream = opts?.stream === true;
 
-  async complete(messages: AIMessage[]): Promise<string> {
-    logger.debug("[Gemini] request", { model: this.model, messages });
-
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:streamGenerateContent?key=${this.apiKey}`;
 
     const parts = messages.map(m => ({
       role: m.role,
       parts: [{ text: m.content }]
     }));
 
-    const body = { contents: parts };
-
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ contents: parts })
     });
 
-    if (!res.ok) {
-      const error = await res.text();
-      throw new Error(`Gemini error ${res.status}: ${error}`);
+    if (!res.ok) throw new Error(await res.text());
+
+    if (!stream) {
+      const data = await res.json();
+      return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
     }
 
-    const data = await res.json();
-    const output =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ??
-      data?.candidates?.[0]?.output_text ??
-      "";
+    let output = "";
 
-    logger.debug("[Gemini] response", { output });
+    await streamSSE(
+      res,
+      token => {
+        output += token;
+        opts?.onToken?.(token);
+      },
+      () => {}
+    );
 
     return output;
   }
@@ -122,40 +133,22 @@ export class GeminiProvider implements AIProvider {
 ────────────────────────────────────────────────────────────────── */
 export class LocalProvider implements AIProvider {
   name = "local";
-  private model: string;
-
-  constructor(model: string) {
-    this.model = model;
-  }
+  constructor(private model: string) {}
 
   async complete(messages: AIMessage[]): Promise<string> {
-    logger.debug("[Local] stub called", { model: this.model, messages });
-
-    // TODO — integrate llama.cpp or local inference server  
     return `[local-model:${this.model}] ${messages[messages.length - 1]?.content}`;
   }
 }
 
-/* ────────────────────────────────────────────────────────────────
-   FACTORY — chooses provider based on config
-────────────────────────────────────────────────────────────────── */
 export function createProvider(cfg: RellaConfig): AIProvider {
-  // Local provider doesn't need API key
-  if (cfg.provider === "local") {
-    return new LocalProvider(cfg.model);
-  }
-
-  if (!cfg.api_key || cfg.api_key.trim().length === 0) {
-    return new NotConfiguredProvider();
-  }
+  if (cfg.provider === "local") return new LocalProvider(cfg.model);
+  if (!cfg.api_key) return new NotConfiguredProvider();
 
   switch (cfg.provider) {
     case "openrouter":
       return new OpenRouterProvider(cfg.api_key, cfg.model);
-
     case "gemini":
       return new GeminiProvider(cfg.api_key, cfg.model);
-
     default:
       return new NotConfiguredProvider();
   }
