@@ -26,7 +26,7 @@ export function ensureConfigDir() {
 export function loadConfig(): RellaConfig {
   ensureConfigDir();
   if (!fileExists(CONFIG_FILE)) {
-    writeFileSafe(CONFIG_FILE, tomlStringify(DEFAULT_CONFIG));
+    writeFileSafe(CONFIG_FILE, tomlStringify(DEFAULT_CONFIG as any));
     cachedConfig = DEFAULT_CONFIG;
     setLogLevel(DEFAULT_CONFIG.log_level);
     return DEFAULT_CONFIG;
@@ -56,7 +56,7 @@ export function loadConfig(): RellaConfig {
 }
 
 export function saveConfig(config: RellaConfig) {
-  writeFileSafe(CONFIG_FILE, tomlStringify(config));
+  writeFileSafe(CONFIG_FILE, tomlStringify(config as any));
   cachedConfig = config;
   setLogLevel(config.log_level);
 }
