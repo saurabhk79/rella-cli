@@ -9,4 +9,5 @@ export interface RellaConfig {
   allowed_commands: string[]; // patterns/globs
   denied_commands: string[];
   default_context: string;
+  streaming: boolean;
 }

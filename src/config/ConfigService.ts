@@ -14,7 +14,8 @@ const DEFAULT_CONFIG: RellaConfig = {
   editor: process.env.EDITOR ?? null,
   allowed_commands: [], // empty = allow all except denied
   denied_commands: [],
-  default_context: ""
+  default_context: "",
+  streaming: true
 };
 
 let cachedConfig: RellaConfig | null = null;
